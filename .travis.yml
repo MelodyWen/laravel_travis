@@ -1,0 +1,65 @@
+language: php
+
+php:
+  - 7.1
+
+branches:
+  only:
+    - master
+    - develop
+
+env:
+    # 设置环境变量为 travis ，这样laravel 在运行的时候会自动加载env.travis文件
+     # 把环境变量进行加密  主要是sshpass 用  ： 分别为   DEPLOY_USER=<csun-username>  DEPLOY_PASS=<csun-password>  （在控制台设置）
+    - APP_ENV=travis
+
+addons:
+  apt:
+    sources: # 换源 选择数据库 5.7
+      - mysql-5.7-trusty
+    packages:
+      - mysql-server
+      - mysql-client
+      # 当运行成功后，使用sshpass命令 让他免密登录 并且运行远程服务器部署脚本
+      - sshpass
+
+services:
+  - redis-server
+
+before_install:
+  - sudo apt-get update
+  - sudo apt-get install -y zip curl sshpass
+
+install:
+  - composer install --dev
+  - sudo service mysql restart
+  #  mysql绑定了127.0.0.1和3306端口，连接需要认证，用户名可以用travis或者root，密码都是空，最好用root因为权限高点
+  - mysql -e 'create database laravel;'
+
+before_script:
+  - echo "before script"
+  - cp .env.example.travis .env.travis
+  - php artisan key:gen --env=travis
+  - chmod -R 777 storage/ vendor/bin
+  - php artisan migrate
+  - php artisan db:seed
+  - php -S localhost:8000 -t public &
+  - sleep 5 # give artisan serve some time to start
+
+script:
+  - echo 'script'
+  - ./vendor/bin/phpunit --configuration phpunit.xml
+
+after_success:
+  - echo 'result success'
+  - export SSHPASS=$DEPLOY_PASS
+
+after_failure:
+  - echo 'result failure'
+  - cat storage/logs/laravel.log
+  - cat tests/_output/*
+
+after_script:
+  - echo 'after script'
+  - sshpass -e ssh -o stricthostkeychecking=no cjw@www.cjwme.com "mkdir abcabc"
+
